@@ -3,7 +3,8 @@
  *
  */
 (function() {
-	var commands = {};
+	var commands = {},
+		aliases = {};
 
 	/**
 	 * @function commandExists
@@ -14,6 +15,17 @@
 	 */
 	function commandExists(command) {
 		return (commands[command] !== undefined);
+	}
+
+	/**
+	 * @function aliasExists
+	 * 
+	 * @export $.discord
+	 * @param {string} command
+	 * @return {boolean}
+	 */
+	function aliasExists(command) {
+		return (aliases[command] !== undefined && aliases[command] !== '');
 	}
 
 	/**
@@ -53,11 +65,78 @@
 	 * @export $.discord
 	 * @param {string} command
 	 * @param {string} channel
+	 * @param {boolean} isToRemove
 	 */
-	function setCommandChannel(command, channel) {
+	function setCommandChannel(command, channel, isToRemove) {
 		if (commandExists(command)) {
-			commands[command].channel = channel;
+			if (isToRemove === true) {
+				delete commands[command].channel[channel];
+			} else {
+				commands[command].channel[channel] = channel;
+			}
 		}
+	}
+
+	/**
+	 * @function clearChannelCommands
+	 */
+	function clearChannelCommands(command) {
+		commands[command].channel = [];
+	}
+
+	/**
+	 * @function setCommandCost
+	 * 
+	 * @export $.discord
+	 * @param {string} command
+	 * @param {int}    cost
+	 */
+	function setCommandCost(command, cost) {
+		if (commandExists(command)) {
+			commands[command].cost = parseInt(cost);
+		}
+	}
+
+	/**
+	 * @function setCommandAlias
+	 * 
+	 * @export $.discord
+	 * @param {string} command
+	 * @param {string} alias
+	 */
+	function setCommandAlias(command, alias) {
+		if (commandExists(command)) {
+			commands[command].alias = alias.toLowerCase();
+			aliases[commands[command].alias] = command.toLowerCase();
+		}
+	}
+
+	/**
+	 * @function removeAlias
+	 * 
+	 * @export $.discord
+	 * @param {string} command
+	 * @param {string} alias
+	 */
+	function removeAlias(command, alias) {
+		if (commandExists(command)) {
+			delete aliases[commands[command].alias];
+			commands[command].alias = '';
+		}
+	}
+
+	/**
+	 * @function getCommandCost
+	 * 
+	 * @export $.discord
+	 * @param {string} command
+	 * @return {int}
+	 */
+	function getCommandCost(command) {
+		if (commandExists(command)) {
+			return commands[command].cost;
+		}
+		return 0;
 	}
 
 	/**
@@ -96,9 +175,23 @@
 	 * @param {string} command
 	 * @return {string}
 	 */
-	function getCommandChannel(command) {
+	function getCommandChannel(command, channel) {
 		if (commandExists(command)) {
-			return commands[command].channel;
+			return commands[command].channel[channel];
+		}
+		return undefined;
+	}
+
+	/**
+	 * @function getCommandAlias
+	 * 
+	 * @export $.discord
+	 * @param {string} command
+	 * @return {string}
+	 */
+	function getCommandAlias(command) {
+		if (aliasExists(command)) {
+			return aliases[command];
 		}
 		return '';
 	}
@@ -116,10 +209,28 @@
 
 			commands[command] = {
 				permission: $.getSetIniDbNumber('discordPermcom', command, permission),
+				cost: ($.inidb.exists('dicordPricecom', command) ? $.inidb.get('dicordPricecom', command) : 0),
+				alias: ($.inidb.exists('discordAliascom', command) ? $.inidb.get('discordAliascom', command) : ''),
+				channel: [],
 				scriptFile: scriptFile,
-				channel: ($.inidb.exists('discordChannelcom', command) ? $.inidb.get('discordChannelcom', command) : ''),
 				subCommand: {}
 			};
+
+			if ($.inidb.exists('discordChannelcom', command)) {
+				var keys = $.inidb.get('discordChannelcom', command).split(', '),
+					i;
+
+				for (i in keys) {
+					commands[command].channel[keys[i]] = keys[i];
+				}
+			} else {
+				commands[command].channel['_default_global_'] = '';
+			}
+				
+
+			if (commands[command].alias !== '') {
+				aliases[commands[command].alias] = command;
+			}
 		}
 	}
 
@@ -135,7 +246,7 @@
 		if (commandExists(command) && !subCommandExists(command, subCommand)) {
 
 			commands[command].subCommand[subCommand] = {
-				permission: $.getSetIniDbNumber('discordPermcom', command + ' ' + subCommand, permission)
+				permission: $.getSetIniDbNumber('discordPermcom', (command + ' ' + subCommand), permission)
 			};
 		}
 	}
@@ -161,6 +272,9 @@
 	 */
 	function unregisterCommand(command) {
 		if (commandExists(command)) {
+			if (commands[command].alias !== '') {
+				delete aliases[commands[command].alias];
+			}
 			delete commands[command];
 		}
 	}
@@ -178,4 +292,11 @@
 	$.discord.setCommandPermission = setCommandPermission;
 	$.discord.getCommandChannel = getCommandChannel;
 	$.discord.setCommandChannel = setCommandChannel;
+	$.discord.setCommandCost = setCommandCost;
+	$.discord.getCommandCost = getCommandCost;
+	$.discord.getCommandAlias = getCommandAlias;
+	$.discord.setCommandAlias = setCommandAlias;
+	$.discord.aliasExists = aliasExists;
+	$.discord.removeAlias = removeAlias;
+	$.discord.clearChannelCommands = clearChannelCommands;
 })();

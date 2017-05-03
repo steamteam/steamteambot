@@ -6,7 +6,6 @@
         reCustomAPIJson = new RegExp(/\(customapijson ([\w\.:\/\$=\?\&]+)\s([\w\W]+)\)/),
         reCustomArg = new RegExp(/\(([1-9])=([a-zA-Z1-9\)\(]+)\)/),
         reCustomToUserArg = new RegExp(/\(touser=([a-zA-Z1-9]+)\)/),
-        reNormalCommandArg = new RegExp(/\(([1-9])\)/),
         reCustomAPITextTag = new RegExp(/{([\w\W]+)}/);
 
     /**
@@ -38,8 +37,14 @@
             s = $.replace(s, s.match(reCustomArg)[0], (event.getArgs()[parseInt(s.match(reCustomArg)[1]) - 1] === undefined ? s.match(reCustomArg)[2] : $.discord.resolve.global(event.getArgs()[parseInt(s.match(reCustomArg)[1]) - 1])));
         }
 
-        if (s.match(reNormalCommandArg)) {
-            s = $.replace(s, s.match(reNormalCommandArg)[0], (event.getArgs()[parseInt(s.match(reNormalCommandArg)[1]) - 1] === undefined ? '' : $.discord.resolve.global(event.getArgs()[parseInt(s.match(reNormalCommandArg)[1]) - 1])));
+        if (s.match(/\(1\)/g)) {
+            for (var i = 1; i < 10; i++) {
+                if (s.includes('(' + i + ')')) {
+                    s = $.replace(s, '(' + i + ')', (event.getArgs()[i - 1] !== undefined ? event.getArgs()[i - 1] : ''));
+                } else {
+                    break;
+                }
+            }
         }
 
         if (s.match(reCustomToUserArg)) {
@@ -64,6 +69,11 @@
 
         if (s.match(/\(#\)/)) {
             s = $.replace(s, '(#)', $.randRange(1, 100).toString());
+        }
+
+        if (s.match(/\(# (\d+),(\d+)\)/g)) {
+            var mat = s.match(/\(# (\d+),(\d+)\)/);
+            s = $.replace(s, mat[0], $.randRange(parseInt(mat[1]), parseInt(mat[2])).toString());
         }
 
         if (s.match(/\(status\)/)) {
@@ -92,12 +102,19 @@
 
         if (s.match(/\(readfile/)) {
             if (s.search(/\((readfile ([^)]+)\))/g) >= 0) {
-                s = $.replace(s, '(' + RegExp.$1, $.readFile('addons/' + RegExp.$2)[0]);
+                s = $.replace(s, '(' + RegExp.$1, $.readFile('./addons/' + RegExp.$2)[0]);
+            }
+        }
+
+        if (s.match(/\(readfilerand/)) {
+            if (s.search(/\((readfilerand ([^)]+)\))/g) >= 0) {
+                var results = $.readFile('./addons/' + RegExp.$2);
+                s = $.replace(s, '(' + RegExp.$1, $.randElement(results));
             }
         }
 
         if (s.match(/\(count\)/g)) {
-            $.inidb.incr('commandCount', event.getCommand(), 1);
+            $.inidb.incr('discordCommandCount', event.getCommand(), 1);
             s = $.replace(s, '(count)', $.inidb.get('discordCommandCount', event.getCommand()));
         }
 
@@ -111,8 +128,34 @@
             s = $.replace(s, '(lasttip)', ($.inidb.exists('donations', 'last_donation_message') ? $.inidb.get('donations', 'last_donation_message') : 'No donations found.'));
         }
 
+        if (s.match(/\(encodeurl ([\w\W]+)\)/)) {
+            var m = s.match(/\(encodeurl ([\w\W]+)\)/);
+            s = $.replace(s, m[0], encodeURI(m[1]));
+        }
+
+        if (s.match(/\(math (.*)\)/)) {
+            var mathStr = s.match(/\(math (.*)\)/)[1].replace(/\s/g, '');
+
+            if (mathStr.length === 0) {
+                return null;
+            }
+
+            s = $.replace(s, s.match(/\(math (.*)\)/)[0], String(eval(mathStr)));
+        }
+
         if (s.match(reCustomAPIJson) || s.match(reCustomAPI)) {
             s = api(event, s);
+        }
+
+        if (s.match(/\(setrole ([\w\W\s]+), ([\w\W\s]+)/)) {
+            if ($.discord.setRole(s.match(/\(setrole ([\w\W\s]+), ([\w\W\s]+)\)/)[2], s.match(/\(setrole ([\w\W\s]+), ([\w\W\s]+)\)/)[1]) == true) {
+                s = $.replace(s, s.match(/\(setrole ([\w\W\s]+), ([\w\W\s]+)\)/)[0], '');
+                if (s.length === 0) {
+                    return null;
+                }
+            } else {
+                return null;
+            }
         }
 
         return s;
@@ -374,33 +417,7 @@
         }
 
         /**
-         * @discordcommandpath coolcom [command] [seconds] - Sets a cooldown on a command. Note all administrators ignore cooldowns.
-         */
-        if (command.equalsIgnoreCase('coolcom')) {
-            if (action === undefined || isNaN(parseInt(subAction))) {
-                $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.coolcom.usage'));
-                return;
-            }
-
-            action = action.replace('!', '').toLowerCase();
-
-            if (!$.discord.commandExists(action)) {
-                $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.coolcom.404'));
-                return;
-            }
-
-            if (subAction == 0) {
-                $.inidb.del('discordCooldown', action);
-                $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.coolcom.removed', action));
-                return;
-            }
-
-            $.inidb.set('discordCooldown', action, subAction);
-            $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.coolcom.success', action, subAction));
-        }
-
-        /**
-         * @discordcommandpath channelcom [command] [channel] - Makes a command only work in that channel, use --global as the channel to make the command global again.
+         * @discordcommandpath channelcom [command] [channel / --global / --list] - Makes a command only work in that channel, spectate  the channels with a comma and space for multiple, use --global as the channel to make the command global again.
          */
         if (command.equalsIgnoreCase('channelcom')) {
             if (action === undefined || subAction === undefined) {
@@ -409,18 +426,110 @@
             }
 
             action = action.replace('!', '').toLowerCase();
-            subAction = subAction.replace('#', '').toLowerCase();
+            subAction = String(subAction).replace(/#/g, '').toLowerCase();
+
+            if (!$.discord.commandExists(action)) {
+                $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.404'));
+                return;
+            }
 
             if (subAction.equalsIgnoreCase('--global') || subAction.equalsIgnoreCase('-g')) {
+                $.discord.clearChannelCommands(action);
+                $.discord.setCommandChannel(event.getArgs()[0], '_default_global_', false);
                 $.inidb.del('discordChannelcom', action);
-                $.discord.setCommandChannel(action, '');
                 $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.channelcom.global', action));
+                return;
+            } else if (subAction.equalsIgnoreCase('--list')) {
+                var keys = $.inidb.get('discordChannelcom', action).split(', '),
+                    key = [],
+                    i;
+
+                for (i in keys) {
+                    key.push('#' + keys[i]);
+                }
+
+                if (key.length !== 0) {
+                    $.discord.say(channel, $.discord.userPrefix(mention) + key.join(', '));
+                } else {
+                    $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.channelcom.404'));
+                }
                 return;
             }
 
             $.inidb.set('discordChannelcom', action, subAction);
-            $.discord.setCommandChannel(action, subAction);
+            $.discord.clearChannelCommands(action);
+            $.discord.setCommandChannel(action, subAction, false);
             $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.channelcom.success', action, subAction));
+        }
+
+        /**
+         * @discordcommandpath pricecom [command] [amount] - Sets a cost for that command, users must of their Twitch accounts linked for this to work.
+         */
+        if (command.equalsIgnoreCase('pricecom')) {
+            if (action === undefined || (subAction === undefined || isNaN(parseInt(subAction)))) {
+                $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.pricecom.usage'));
+                return;
+            }
+
+            action = action.replace('!', '').toLowerCase();
+
+            if (!$.discord.commandExists(action)) {
+                $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.404'));
+                return;
+            }
+
+            $.inidb.set('discordPricecom', action, subAction);
+            $.discord.setCommandCost(action, subAction);
+            $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.pricecom.success', action, $.getPointsString(subAction)));
+        }
+
+        /**
+         * @discordcommandpath aliascom [alias] [command] - Alias a command to another command, this only works with commands that have a single command.
+         */
+        if (command.equalsIgnoreCase('aliascom')) {
+            if (action === undefined || subAction === undefined) {
+                $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.aliascom.usage'));
+                return;
+            }
+
+            action = action.replace('!', '').toLowerCase();
+            subAction = subAction.replace('!', '').toLowerCase();
+
+            if (!$.discord.commandExists(subAction)) {
+                $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.404'));
+                return;
+            }
+
+            $.inidb.set('discordAliascom', subAction, action);
+            $.discord.setCommandAlias(subAction, action);
+            $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.aliascom.success', action, subAction));
+        }
+
+        /**
+         * @discordcommandpath delalias [alias] - Removes the alias of that command.
+         */
+        if (command.equalsIgnoreCase('delalias')) {
+            if (action === undefined) {
+                $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.delalias.usage'));
+                return;
+            }
+
+            action = action.replace('!', '').toLowerCase();
+
+            if (!$.discord.aliasExists(action)) {
+                $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.alias.404'));
+                return;
+            }
+
+            var keys = $.inidb.GetKeyList('discordAliascom', ''),
+                i;
+            for (i in keys) {
+                if ($.inidb.get('discordAliascom', keys[i]).equalsIgnoreCase(action)) {
+                    $.inidb.del('discordAliascom', keys[i]);
+                    $.discord.removeAlias(keys[i], '');
+                }
+            }
+            $.discord.say(channel, $.discord.userPrefix(mention) + $.lang.get('discord.customcommands.delalias.success', action));
         }
 
         /**
@@ -458,19 +567,19 @@
      * @event initReady
      */
     $.bind('initReady', function() {
-        if ($.bot.isModuleEnabled('./discord/commands/customCommands.js')) {
-            $.discord.registerCommand('./discord/commands/customCommands.js', 'addcom', 1);
-            $.discord.registerCommand('./discord/commands/customCommands.js', 'delcom', 1);
-            $.discord.registerCommand('./discord/commands/customCommands.js', 'editcom', 1);
-            $.discord.registerCommand('./discord/commands/customCommands.js', 'permcom', 1);
-            $.discord.registerCommand('./discord/commands/customCommands.js', 'coolcom', 1);
-            $.discord.registerCommand('./discord/commands/customCommands.js', 'channelcom', 1);
-            $.discord.registerCommand('./discord/commands/customCommands.js', 'commands', 0);
-            $.discord.registerCommand('./discord/commands/customCommands.js', 'botcommands', 1);
-
-            loadCustomCommands();
-            // $.unbind('initReady'); Needed or not?
-        }
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'addcom', 1);
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'delcom', 1);
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'editcom', 1);
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'permcom', 1);
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'coolcom', 1);
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'channelcom', 1);
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'pricecom', 1);
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'aliascom', 1);
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'delalias', 1);
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'commands', 0);
+        $.discord.registerCommand('./discord/commands/customCommands.js', 'botcommands', 1);
+        
+        loadCustomCommands();
     });
 
     /**
@@ -483,7 +592,27 @@
                     $.discord.registerCommand('./discord/commands/customCommands.js', event.getArgs()[0], event.getArgs()[1]);
                 } else {
                     $.discord.setCommandPermission(event.getArgs()[0], event.getArgs()[1]);
-                    $.discord.setCommandChannel(event.getArgs()[0], (event.getArgs()[2].length() === 0 ? '' : event.getArgs()[2]));
+                    $.discord.setCommandCost(event.getArgs()[0], (event.getArgs()[4].length() === 0 ? '' : event.getArgs()[4]));
+                    if (event.getArgs()[3].length() === 0) {
+                        $.discord.removeAlias(event.getArgs()[0], $.inidb.get('discordAliascom', event.getArgs()[0]));
+                    } else {
+                        $.discord.setCommandAlias(event.getArgs()[0], (event.getArgs()[3].length() === 0 ? '' : event.getArgs()[3]));
+                    }
+
+                    if (event.getArgs()[2].length() === 0) {
+                        $.discord.clearChannelCommands(event.getArgs()[0]);
+                        $.discord.setCommandChannel(event.getArgs()[0], '_default_global_', false);
+                        $.inidb.del('discordChannelcom', event.getArgs()[0]);
+                    } else {
+                        $.discord.clearChannelCommands(event.getArgs()[0]);
+                        var keys = event.getArgs()[2].split(', '),
+                            i;
+ 
+                        for (i in keys) {
+                            $.discord.setCommandChannel(event.getArgs()[0], keys[i], false);
+                        }
+                        $.inidb.set('discordChannelcom', event.getArgs()[0], event.getArgs()[2]);
+                    }
                 }
             } else {
                 $.discord.unregisterCommand(event.getArgs()[0]);

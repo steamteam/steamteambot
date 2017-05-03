@@ -115,6 +115,7 @@
 
         if (tier > $.getGWTier(username)) {
             $.addGWSubUsersList(username, tier);
+            $.restoreSubscriberStatus(username, false);
             if (subShowMessages) {
                 $.say(tierUpMessage.replace('(name)', resolvename).replace('(tier)', tier));
             }
@@ -140,6 +141,8 @@
             $.inidb.incr('points', username, userreward);
             $.say(subMessage.replace('(name)', resolvename).replace('(tier)', tier.toString()).replace('(reward)', userreward.toString()));
         }
+        $.writeToFile(username + ' ', './addons/gameWispHandler/latestSub.txt', false);
+        $.writeToFile(username + ' ', './addons/gameWispHandler/latestSubOrResub.txt', false);
     });
 
     /**
@@ -159,6 +162,8 @@
             $.inidb.incr('points', username, parseInt(userreward));
             $.say(reSubMessage.replace('(name)', resolvename).replace('(tier)', tier.toString()).replace('(reward)', userreward.toString()).replace('(months)', months.toString()));
         }
+        $.writeToFile(username + ' ', './addons/gameWispHandler/latestResub.txt', false);
+        $.writeToFile(username + ' ', './addons/gameWispHandler/latestSubOrResub.txt', false);
     });
 
     /**

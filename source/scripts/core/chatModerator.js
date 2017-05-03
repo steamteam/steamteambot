@@ -3,6 +3,7 @@
         timeouts = {},
         whiteList = [],
         blackList = [],
+        regexBlackList = [],
         spamTracker = {},
 
         linksToggle = $.getSetIniDbBoolean('chatModerator', 'linksToggle', false),
@@ -269,9 +270,14 @@
     function loadBlackList() {
         var keys = $.inidb.GetKeyList('blackList', '');
         blackList = [];
+        regexBlackList = [];
 
         for (i = 0; i < keys.length; i++) {
-            blackList.push(keys[i]);
+            if (keys[i].startsWith('regex:')) {
+                regexBlackList.push(new RegExp(keys[i].replace('regex:', '')));
+            } else {
+                blackList.push(keys[i]);
+            }
         }
     }
 
@@ -389,6 +395,14 @@
      * @param {string} message
      */
     function checkBlackList(sender, message) {
+        for (i in regexBlackList) {
+            if (message.match(regexBlackList[i])) {
+                timeoutUser(sender, blacklistTimeoutTime, silentTimeout.BlacklistMessage);
+                warning = $.lang.get('chatmoderator.timeout');
+                sendMessage(sender, blacklistMessage, silentTimeout.Blacklist);
+                return true;
+            }
+        }
         for (i in blackList) {
             if (message.includes(blackList[i])) {
                 timeoutUser(sender, blacklistTimeoutTime, silentTimeout.BlacklistMessage);
@@ -435,6 +449,7 @@
             messageLength = message.length();
 
         if (!$.isModv3(sender, event.getTags())) {
+            // Links filter
             if (linksToggle && $.patternDetector.hasLinks(event)) {
                 if (checkYoutubePlayer(message) || checkPermitList(sender) || checkWhiteList(message)) {
                     return;
@@ -448,8 +463,9 @@
                 sendMessage(sender, linksMessage, silentTimeout.Links);
                 $.patternDetector.logLastLink(event);
                 return;
-            }
+            } else 
 
+            // Symbol filter
             if (symbolsToggle && messageLength > symbolsTriggerLength) {
                 if ($.patternDetector.getLongestNonLetterSequence(event) > symbolsGroupLimit || (($.patternDetector.getNumberOfNonLetters(event) / messageLength) * 100) > symbolsLimitPercent) {
                     if (!regulars.Symbols && $.isReg(sender) || !subscribers.Symbols && $.isSubv3(sender, event.getTags())) {
@@ -459,8 +475,9 @@
                     sendMessage(sender, symbolsMessage, silentTimeout.Symbols);
                     return;
                 }
-            }
+            } else
 
+            // Spam filter
             if (spamToggle && $.patternDetector.getLongestRepeatedSequence(event) > spamLimit) {
                 if (!regulars.Spam && $.isReg(sender) || !subscribers.Spam && $.isSubv3(sender, event.getTags())) {
                     return;
@@ -468,8 +485,9 @@
                 timeout(sender, warningTime.Spam, timeoutTime.Spam, silentTimeout.SpamMessage);
                 sendMessage(sender, spamMessage, silentTimeout.Spam);
                 return;
-            }
+            } else 
 
+            // Long msg filter
             if (longMessageToggle && messageLength > longMessageLimit) {
                 if (!regulars.LongMsg && $.isReg(sender) || !subscribers.LongMsg && $.isSubv3(sender, event.getTags())) {
                     return;
@@ -477,8 +495,9 @@
                 timeout(sender, warningTime.LongMsg, timeoutTime.LongMsg, silentTimeout.LongMessage);
                 sendMessage(sender, longMessageMessage, silentTimeout.LongMsg);
                 return;
-            }
+            } else 
 
+            // Fake purge filter
             if (fakePurgeToggle && $.patternDetector.getFakePurge(event)) {
                 if (!regulars.FakePurge && $.isReg(sender) || !subscribers.FakePurge && $.isSubv3(sender, event.getTags())) {
                     return;
@@ -487,8 +506,9 @@
                 timeout(sender, warningTime.FakePurge, timeoutTime.FakePurge, silentTimeout.FakePurgeMessage);
                 sendMessage(sender, fakePurgeMessage, silentTimeout.FakePurge);
                 return;
-            }
+            } else 
 
+            // Emotes folter
             if (emotesToggle && $.patternDetector.getEmotesCount(event) > emotesLimit) {
                 if (!regulars.Emotes && $.isReg(sender) || !subscribers.Emotes && $.isSubv3(sender, event.getTags())) {
                     return;
@@ -496,8 +516,9 @@
                 timeout(sender, warningTime.Emotes, timeoutTime.Emotes, silentTimeout.EmoteMessage);
                 sendMessage(sender, emotesMessage, silentTimeout.Emotes);
                 return;
-            }
+            } else 
 
+            // Caps filter
             if (capsToggle && messageLength > capsTriggerLength) {
                 if (((($.patternDetector.getNumberOfCaps(event) - $.patternDetector.getEmotesLength(event)) / messageLength) * 100) > capsLimitPercent) {
                     if (!regulars.Caps && $.isReg(sender) || !subscribers.Caps && $.isSubv3(sender, event.getTags())) {
@@ -507,8 +528,9 @@
                     sendMessage(sender, capsMessage, silentTimeout.Caps);
                     return;
                 }
-            }
+            } else 
 
+            // Color filter
             if (colorsToggle && $.patternDetector.getColoredMessage(event)) {
                 if (!regulars.Colors && $.isReg(sender) || !subscribers.Colors && $.isSubv3(sender, event.getTags())) {
                     return;
@@ -516,30 +538,33 @@
                 timeout(sender, warningTime.Colors, timeoutTime.Colors, silentTimeout.ColorMessage);
                 sendMessage(sender, colorsMessage, silentTimeout.Colors);
                 return;
-            }
+            } else 
 
+            // Blacklist
             if (message && checkBlackList(sender, message)) {
                 return;
-            }
+            } else {
 
-            if (spamTrackerToggle) {
-                if (!regulars.SpamTracker && $.isReg(sender) || !subscribers.SpamTracker && $.isSubv3(sender, event.getTags())) {
-                    return;
-                }
-                if (spamTracker[sender] !== undefined) {
-                    if (spamTracker[sender].time - $.systemTime() <= 0) {
-                        spamTracker[sender] = {count: 0, time: ($.systemTime() + (spamTrackerTime * 1e3))};
+                // Spam tracker
+                if (spamTrackerToggle) {
+                    if (!regulars.SpamTracker && $.isReg(sender) || !subscribers.SpamTracker && $.isSubv3(sender, event.getTags())) {
+                        return;
                     }
-                    spamTracker[sender].count++;
-                } else {
-                    spamTracker[sender] = {count: 1, time: ($.systemTime() + (spamTrackerTime * 1e3))};
+                    if (spamTracker[sender] !== undefined) {
+                        if (spamTracker[sender].time - $.systemTime() <= 0) {
+                            spamTracker[sender] = {count: 0, time: ($.systemTime() + (spamTrackerTime * 1e3))};
+                        }
+                        spamTracker[sender].count++;
+                    } else {
+                        spamTracker[sender] = {count: 1, time: ($.systemTime() + (spamTrackerTime * 1e3))};
+                    }
+                    if (spamTracker[sender].count >= spamTrackerLimit) {
+                        timeout(sender, warningTime.SpamTracker, timeoutTime.SpamTracker, silentTimeout.SpamTrackerMessage);
+                        sendMessage(sender, spamTrackerMessage, silentTimeout.SpamTracker);
+                        delete spamTracker[sender];
+                    }
+                    spamTrackerLastMsg = ($.systemTime() + 3e5);
                 }
-                if (spamTracker[sender].count >= spamTrackerLimit) {
-                    timeout(sender, warningTime.SpamTracker, timeoutTime.SpamTracker, silentTimeout.SpamTrackerMessage);
-                    sendMessage(sender, spamTrackerMessage, silentTimeout.SpamTracker);
-                    delete spamTracker[sender];
-                }
-                spamTrackerLastMsg = ($.systemTime() + 3e5);
             }
         }
     }
@@ -836,17 +861,17 @@
             }
 
             /**
-             * @commandpath blacklist add [word] - Adds a word to the blacklist
+             * @commandpath blacklist add [word] - Adds a word to the blacklist. Use regex: at the start to specify a regex blacklist.
              */
             if (action.equalsIgnoreCase('add')) {
                 if (!subAction) {
                     $.say($.whisperPrefix(sender) + $.lang.get('chatmoderator.blacklist.add.usage'));
                     return;
                 }
-                var word = argString.replace(action, '').trim().toLowerCase();
+                var word = args.slice(1).join(' ').toLowerCase();
 
                 $.inidb.set('blackList', word, 'true');
-                blackList.push(word);
+                loadBlackList();
                 $.say($.whisperPrefix(sender) + $.lang.get('chatmoderator.blacklist.added'));
                 $.log.event('"' + word + '" was added to the blacklist by ' + sender);
             }
@@ -858,11 +883,11 @@
                 if (!subAction) {
                     $.say($.whisperPrefix(sender) + $.lang.get('chatmoderator.blacklist.remove.usage'));
                     return;
-                } else if (!$.inidb.exists('blackList', argString.replace(action, '').trim().toLowerCase())) {
+                } else if (!$.inidb.exists('blackList', args.slice(1).join(' ').toLowerCase())) {
                     $.say($.whisperPrefix(sender) + $.lang.get('chatmoderator.err'));
                     return;
                 }
-                $.inidb.del('blackList', argString.replace(action, '').trim().toLowerCase());
+                $.inidb.del('blackList', args.slice(1).join(' ').toLowerCase());
                 loadBlackList();
                 $.say($.whisperPrefix(sender) + $.lang.get('chatmoderator.blacklist.removed'));
             }

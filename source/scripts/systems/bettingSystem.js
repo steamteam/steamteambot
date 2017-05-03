@@ -44,7 +44,7 @@
 			if (sender == $.botName) return;
 			$.say($.whisperPrefix(sender) + $.lang.get('bettingsystem.open.error.opened'));
 			return;
-		} else if (!options.includes(',')) {
+		} else if (!options.includes(', ')) {
 			$.say($.whisperPrefix(sender) + $.lang.get('bettingsystem.open.usage'));
 			return;
 		}
@@ -88,6 +88,9 @@
 			if (sender == $.botName) return;
 			$.say($.whisperPrefix(sender) + $.lang.get('bettingsystem.close.usage'));
 			return;
+		} else if (bet.options[option] === undefined) {
+			$.say($.whisperPrefix(sender) + $.lang.get('bettingsystem.bet.null'));
+			return;
 		}
 
 		clearInterval(timeout);
@@ -100,8 +103,9 @@
 		    give = 0,
 		    i;
 
-		$.say($.lang.get('bettingsystem.close.success'));
+		$.say($.lang.get('bettingsystem.close.success', option));
 
+		$.inidb.setAutoCommit(false);
 		for (i in bets) {
 			if (bets[i].option.equalsIgnoreCase(option)) {
 				winners.push(i.toLowerCase());
@@ -110,11 +114,12 @@
 				$.inidb.incr('points', i.toLowerCase(), Math.floor(give));
 			}
 		}
+		$.inidb.setAutoCommit(true);
 
 		bet.winners = winners.join(', ');
 		bet.pointsWon = total;
 
-		$.say($.lang.get('bettingsystem.close.success.winners', winners.length, $.getPointsString(Math.floor(total))));
+		$.say($.lang.get('bettingsystem.close.success.winners', winners.length, $.getPointsString(Math.floor(total)), option));
 		$.inidb.set('bettingSettings', 'lastBet', winners.length + '___' + $.getPointsString(Math.floor(total)));
 		clear();
 	}
@@ -251,7 +256,7 @@
 			 * @commandpath bet close ["winning option"] - Closes the current bet.
 			 */
 			} else if (action.equalsIgnoreCase('close')) {
-				close(sender, args[1], args[2]);
+				close(sender, args.slice(1).join(' ').toLowerCase());
 				return;
 
 			/**
@@ -316,6 +321,15 @@
 				return;
 
 			/**
+			 * @commandpath bet current - Shows current bet stats.
+			 */
+			} else if (action.equalsIgnoreCase('current')) {
+				if (bet.status === true) {
+					$.say($.lang.get('bettingsystem.results', bet.title, bet.opt.join(', '), bet.total, bet.entries));
+				}
+				return;
+
+			/**
 			 * @commandpath bet [amount] [option] - Bets on the option.
 			 */
 			} else {
@@ -330,7 +344,8 @@
 	$.bind('initReady', function() {
         if ($.bot.isModuleEnabled('./systems/bettingSystem.js')) {
             $.registerChatCommand('./systems/bettingSystem.js', 'bet', 7);
-            $.registerChatSubcommand('bet', 'lookup', 7);
+            $.registerChatSubcommand('bet', 'current', 7);
+            $.registerChatSubcommand('bet', 'results', 7);
             $.registerChatSubcommand('bet', 'open', 2);
             $.registerChatSubcommand('bet', 'close', 2);
             $.registerChatSubcommand('bet', 'save', 1);
